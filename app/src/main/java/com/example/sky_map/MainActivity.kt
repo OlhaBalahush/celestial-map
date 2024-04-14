@@ -10,6 +10,7 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -18,6 +19,11 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
+import okhttp3.*
+import java.io.IOException
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Base64
 
 
 class MainActivity : ComponentActivity(), SensorEventListener {
@@ -32,6 +38,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private var accelerometerData = FloatArray(3)
     private var magnetometerData = FloatArray(3)
+
+    private val client = OkHttpClient()
+    private val APP_URL = "https://api.astronomyapi.com/api/v2/bodies/positions"
+    private val APP_SECRET = "388d813bb29cc54f9d9817cb4b3ad6ac2fb412b23b8cf0c89e291f2587783fbdc4d0b447a4fff2994539ae511cd17f6d8097ac42e0ab4f81bde74a5cd6287bfdf6620d4ef4520ab5cf0e3ef95d89ac3e9e99488918342a86ab9cee583c091bd6fe362dd6cd59e58c2e551ecd140f3670"
+    private val APP_ID = "d7aa8d3e-e68c-4b0f-b2e6-f43efd799021"
+    private lateinit var apiTextView: TextView
 
     @RequiresApi(Build.VERSION_CODES.O)
     @SuppressLint("MissingPermission")
@@ -53,6 +65,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         sensorsTextView = TextView(this)
         layout.addView(sensorsTextView)
 
+        apiTextView = TextView(this)
+        layout.addView(apiTextView)
+
         setContentView(layout)
 
         locationClient = LocationServices.getFusedLocationProviderClient(this)
@@ -65,8 +80,62 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             .addOnSuccessListener { location: Location? ->
                 if (location != null) {
                     onLocationAvailable(location)
+                    fetchDataFromAstronomyAPI(location)
                 }
             }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun fetchDataFromAstronomyAPI(location: Location) {
+        val elevation = "0"
+        val today = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        val time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"))
+        val credentialsBase64 = Base64.getEncoder().encodeToString("$APP_ID:$APP_SECRET".toByteArray())
+        val url = "$APP_URL?latitude=${location.latitude.toString()}" +
+                "&longitude=${location.longitude.toString()}" +
+                "&elevation=${elevation}" +
+                "&from_date=$today" +
+                "&to_date=$today" +
+                "&time=$time"
+
+        val request = Request.Builder()
+            .url(url)
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("Authorization", "Basic $credentialsBase64")
+            .build()
+
+        client.newCall(request).enqueue(object: Callback {
+            @SuppressLint("SetTextI18n")
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e("API Request", "Failure: ${e.message}")
+                runOnUiThread {
+                    apiTextView.text = "Failed to fetch data: ${e.message}"
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val responseBody = response.body?.string()
+                println("HERE!!!")
+                // Process the response body (e.g., parse JSON)
+                if (response.isSuccessful) {
+                    runOnUiThread {
+                        if (responseBody != null) {
+                            apiTextView.text = responseBody.toString()
+                            println("responseBody $responseBody")
+                        }
+                    }
+                    Log.i("Network Test", "Google reachable, internet is working")
+                } else {
+                    Log.e("Network Test", "Failed to reach Google")
+                }
+            }
+        })
+    }
+
+    fun processResponse(responseBody: String){
+        println("responseBody $responseBody")
+        // TODO Parse the response body (e.g., using Gson or JSONObject)
+        //  Handle the parsed data as needed
     }
 
     override fun onResume() {
