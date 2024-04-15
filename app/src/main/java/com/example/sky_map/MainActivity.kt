@@ -1,5 +1,6 @@
 package com.example.sky_map
 
+import com.example.sky_map.CelestialResponse
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
@@ -19,11 +20,165 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import okhttp3.*
 import java.io.IOException
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Base64
+import kotlinx.serialization.*
+import kotlinx.serialization.descriptors.*
+import kotlinx.serialization.encoding.*
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class CelestialResponse(
+    val data: Data
+)
+
+@Serializable
+data class Data(
+    val dates: Dates,
+    val observer: Observer,
+    val table: Table
+)
+
+@Serializable
+data class Dates(
+    val from: String,
+    val to: String
+)
+
+@Serializable
+data class Observer(
+    val location: CLocation
+)
+
+@Serializable
+data class CLocation(
+    val longitude: Double,
+    val latitude: Double,
+    val elevation: Int
+)
+
+@Serializable
+data class Table(
+    val header: List<String>,
+    val rows: List<Row>
+)
+
+@Serializable
+data class Row(
+    val entry: Entry
+)
+
+@Serializable
+data class Entry(
+    val id: String,
+    val name: String,
+    val cells: List<Cell> = emptyList()
+)
+
+@Serializable
+data class Cell(
+    val date: String,
+    val id: String,
+    val distance: Distance,
+    val position: Position
+)
+
+@Serializable
+data class Distance(
+    val fromEarth: DistanceData
+)
+
+@Serializable
+data class DistanceData(
+    val au: String,
+    val km: String
+)
+
+@Serializable
+data class Position(
+    val horizontal: Horizontal,
+    val equatorial: Equatorial,
+    val constellation: Constellation,
+    val extralnfo: ExtraInfo
+)
+
+@Serializable
+data class Horizontal(
+    val altitude: Angle,
+    val azimuth: Angle
+)
+
+@Serializable
+data class Equatorial(
+    val rightAscension: HourAngle,
+    val declination: Angle
+)
+
+@Serializable
+data class Constellation(
+    val id: String,
+    val short: String,
+    val name: String
+)
+
+@Serializable
+data class ExtraInfo(
+    val elongation: Double,
+    val magnitude: Double,
+    val phase: Phase
+)
+
+@Serializable
+data class Angle(
+    @Serializable(with = AngleSerializer::class)
+    val degrees: Double,
+    val string: String
+)
+
+@Serializable
+data class HourAngle(
+    @Serializable(with = HourAngleSerializer::class)
+    val hours: Double,
+    val string: String
+)
+
+@Serializable
+data class Phase(
+    val angle: Double,
+    val fraction: String,
+    val string: String
+)
+
+object AngleSerializer : KSerializer<Double> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("Angle", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: Double) {
+        encoder.encodeString(value.toString())
+    }
+
+    override fun deserialize(decoder: Decoder): Double {
+        val value = decoder.decodeString()
+        return value.dropLast(1).toDouble() // Removing the last character (') and converting to Double
+    }
+}
+
+object HourAngleSerializer : KSerializer<Double> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("HourAngle", PrimitiveKind.STRING)
+
+    override fun serialize(encoder: Encoder, value: Double) {
+        encoder.encodeString(value.toString())
+    }
+
+    override fun deserialize(decoder: Decoder): Double {
+        val value = decoder.decodeString()
+        return value.dropLast(1).toDouble() // Removing the last character (') and converting to Double
+    }
+}
 
 
 class MainActivity : ComponentActivity(), SensorEventListener {
@@ -115,13 +270,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
             override fun onResponse(call: Call, response: Response) {
                 val responseBody = response.body?.string()
-                println("HERE!!!")
                 // Process the response body (e.g., parse JSON)
                 if (response.isSuccessful) {
                     runOnUiThread {
                         if (responseBody != null) {
-                            apiTextView.text = responseBody.toString()
-                            println("responseBody $responseBody")
+                            processResponse(responseBody)
                         }
                     }
                     Log.i("Network Test", "Google reachable, internet is working")
@@ -132,10 +285,24 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         })
     }
 
-    fun processResponse(responseBody: String){
-        println("responseBody $responseBody")
-        // TODO Parse the response body (e.g., using Gson or JSONObject)
-        //  Handle the parsed data as needed
+    fun processResponse(responseBody: String) {
+        val json = Json { ignoreUnknownKeys = true } // Allows us to ignore properties we don't need
+        try {
+            val celestialResponse = json.decodeFromString<CelestialResponse>(responseBody)
+            runOnUiThread {
+                apiTextView.text = celestialResponse.toString()
+            }
+        } catch (e: SerializationException) {
+            Log.e("processResponse", "SerializationException parsing JSON", e)
+            runOnUiThread {
+                apiTextView.text = "SerializationException parsing JSON: ${e.localizedMessage}"
+            }
+        } catch (e: Exception) {
+            Log.e("processResponse", "Error parsing JSON", e)
+            runOnUiThread {
+                apiTextView.text = "Error parsing JSON: ${e.localizedMessage}"
+            }
+        }
     }
 
     override fun onResume() {

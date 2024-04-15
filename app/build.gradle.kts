@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.jetbrainsKotlinAndroid)
+//    kotlin("jvm")
+    kotlin("plugin.serialization") version "1.9.23"
 }
 
 android {
@@ -66,4 +68,5 @@ dependencies {
 
     implementation("com.google.android.gms:play-services-location:21.2.0")
     implementation("com.squareup.okhttp3:okhttp:4.9.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 }
